@@ -1,0 +1,46 @@
+// Coze Workflow Batch Tool - Database Schema
+// https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Vercel 部署用 POSTGRES_*；本地开发需 Postgres（见 .env.example）
+datasource db {
+  provider  = "postgresql"
+  url       = env("POSTGRES_PRISMA_URL")
+  directUrl = env("POSTGRES_URL_NON_POOLING")
+}
+
+// 普通用户表 (管理员无表，通过环境变量 ADMIN_PASSWORD 硬编码)
+model User {
+  id           String    @id @default(cuid())
+  username     String    @unique
+  passwordHash String    // bcrypt
+  createdAt    DateTime  @default(now())
+  status       Int       @default(1) // 1=Active, 0=Banned
+  projects     Project[]
+}
+
+// 项目配置表 (工作流定义)
+model Project {
+  id           String    @id @default(cuid())
+  name         String
+  description  String?
+  icon         String    @default("Zap") // Lucide 图标名
+
+  ownerId      String
+  owner        User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  workflowId   String
+  apiToken     String?   // 可选，不存则运行时由前端填入
+
+  // 输入列 (JSON 字符串，兼容 SQLite/Postgres)
+  inputSchema  String
+  // 输出列 (JSON 字符串，兼容 SQLite/Postgres)
+  outputSchema String
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  lastRunAt    DateTime?
+}
