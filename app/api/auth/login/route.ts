@@ -1,7 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { signToken, setAuthCookie } from "@/lib/auth";
+import { signToken, COOKIE_NAME, COOKIE_OPTIONS } from "@/lib/auth";
 import bcrypt from "bcryptjs";
+
+function loginResponse(
+  data: { success: true; role: string; message: string; userId?: string },
+  token: string
+) {
+  const res = NextResponse.json(data);
+  res.cookies.set(COOKIE_NAME, token, {
+    ...COOKIE_OPTIONS,
+    secure: process.env.NODE_ENV === "production",
+  });
+  return res;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -20,12 +32,10 @@ export async function POST(req: NextRequest) {
     // God Mode: 密码匹配管理员
     if (password === adminPassword) {
       const token = await signToken({ role: "admin" });
-      await setAuthCookie(token);
-      return NextResponse.json({
-        success: true,
-        role: "admin",
-        message: "God Mode 已启用",
-      });
+      return loginResponse(
+        { success: true, role: "admin", message: "God Mode 已启用" },
+        token
+      );
     }
 
     // 普通用户: 查库
@@ -56,13 +66,15 @@ export async function POST(req: NextRequest) {
     }
 
     const token = await signToken({ role: "user", userId: user.id });
-    await setAuthCookie(token);
-    return NextResponse.json({
-      success: true,
-      role: "user",
-      userId: user.id,
-      message: "登录成功",
-    });
+    return loginResponse(
+      {
+        success: true,
+        role: "user",
+        userId: user.id,
+        message: "登录成功",
+      },
+      token
+    );
   } catch (e) {
     console.error("Login error", e);
     return NextResponse.json(

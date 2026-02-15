@@ -6,8 +6,8 @@ const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || "your-super-secret-key-change-in-production"
 );
 
-const COOKIE_NAME = "coze-batch-token";
-const COOKIE_OPTIONS = {
+export const COOKIE_NAME = "coze-batch-token";
+export const COOKIE_OPTIONS = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
   sameSite: "lax" as const,
