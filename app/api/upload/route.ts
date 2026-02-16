@@ -35,27 +35,55 @@ const ALLOWED_CONTENT_TYPES = [
 ];
 
 export async function POST(request: Request): Promise<NextResponse> {
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
-    console.error("BLOB_READ_WRITE_TOKEN is not set");
-    return NextResponse.json(
-      { error: "Server upload is not configured (missing BLOB_READ_WRITE_TOKEN)" },
-      { status: 503 }
-    );
-  }
-
-  const auth = await getAuthFromCookie();
-  if (!auth) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  let body: HandleUploadBody;
   try {
-    body = (await request.json()) as HandleUploadBody;
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-  }
+    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+      console.error("BLOB_READ_WRITE_TOKEN is not set");
+      return NextResponse.json(
+        { error: "Server upload is not configured (missing BLOB_READ_WRITE_TOKEN)" },
+        { status: 503 }
+      );
+    }
 
-  try {
+    const auth = await getAuthFromCookie();
+    if (!auth) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    let body: HandleUploadBody;
+    const contentType = request.headers.get("content-type") ?? "";
+    if (!contentType.includes("application/json")) {
+      return NextResponse.json(
+        {
+          error:
+            "Content-Type must be application/json. Use upload() from @vercel/blob/client with handleUploadUrl.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const raw = await request.text();
+    if (!raw || !raw.trim()) {
+      return NextResponse.json(
+        { error: "Request body is empty. Use upload() from @vercel/blob/client." },
+        { status: 400 }
+      );
+    }
+    try {
+      body = JSON.parse(raw) as HandleUploadBody;
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid JSON body. Ensure the client uses upload() from @vercel/blob/client." },
+        { status: 400 }
+      );
+    }
+
+    if (!body || typeof body !== "object" || !("type" in body)) {
+      return NextResponse.json(
+        { error: "Invalid upload payload: missing type. Use upload() from @vercel/blob/client." },
+        { status: 400 }
+      );
+    }
+
     const jsonResponse = await handleUpload({
       body,
       request,
@@ -74,7 +102,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     return NextResponse.json(jsonResponse);
   } catch (error) {
-    console.error("Upload handleUpload error", error);
+    console.error("Upload API error", error);
     return NextResponse.json(
       { error: (error as Error).message || "Upload failed" },
       { status: 400 }
