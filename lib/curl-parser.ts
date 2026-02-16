@@ -59,7 +59,8 @@ export function parseCurlCommand(curl: string): InputSchemaItem[] {
     const params = parsed.parameters as Record<string, unknown>;
     return Object.keys(params).map((key) => {
       const value = params[key];
-      const type = isFileUrl(value) ? ("file" as const) : ("text" as const);
+      const type =
+        isFileUrl(value) || isFileLikeKey(key) ? ("file" as const) : ("text" as const);
       return { key, label: key, type };
     });
   } catch (e) {
@@ -78,6 +79,9 @@ export interface OutputSchemaItem {
 /** 嗅探：字符串是否为带已知文件后缀的 URL，自动识别为 File 类型（含 query 的 URL 按 pathname 判断） */
 const FILE_EXT_REGEX = /\.(png|jpg|jpeg|gif|webp|mp4|mov|webm|pdf|doc|docx|xls|xlsx|csv|txt|md)(\?|$)/i;
 
+/** 语义键名：变量名包含暗示文件/媒体的关键词（如 image、input_image），短链接无后缀时也识别为 File */
+const FILE_LIKE_KEY_REGEX = /^(image|img|pic|photo|video|vid|file|doc|document|pdf|audio|voice|avatar|cover|input_image|target_image)$/i;
+
 function isFileUrl(value: unknown): boolean {
   if (typeof value !== "string") return false;
   const s = value.trim();
@@ -87,6 +91,10 @@ function isFileUrl(value: unknown): boolean {
   } catch {
     return FILE_EXT_REGEX.test(s);
   }
+}
+
+function isFileLikeKey(key: string): boolean {
+  return FILE_LIKE_KEY_REGEX.test(key.trim());
 }
 
 function isHttpUrl(value: unknown): boolean {
