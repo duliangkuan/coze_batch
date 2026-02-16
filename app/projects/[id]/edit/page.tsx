@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/select";
 import { parseCurlCommand, parseResponseToSchema, parseCurlMetadata } from "@/lib/curl-parser";
 import type { InputSchemaItem, OutputSchemaItem } from "@/lib/schema-types";
-import { Wand2, Save, Eye, EyeOff } from "lucide-react";
+import { Wand2, Save, Eye, EyeOff, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 const INPUT_TYPES = [
@@ -108,8 +108,25 @@ export default function ProjectEditPage() {
     setOutputSchema((prev) => {
       const next = [...prev];
       next[index] = { ...next[index], [field]: value };
+      if (field === "path") next[index].key = value.replace(/\./g, "_");
       return next;
     });
+  };
+
+  const addInputRow = () => {
+    setInputSchema((prev) => [...prev, { key: "", label: "", type: "text" }]);
+  };
+
+  const removeInputRow = (index: number) => {
+    setInputSchema((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const addOutputRow = () => {
+    setOutputSchema((prev) => [...prev, { path: "", key: "", label: "", type: "text" }]);
+  };
+
+  const removeOutputRow = (index: number) => {
+    setOutputSchema((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleSave = async () => {
@@ -121,8 +138,20 @@ export default function ProjectEditPage() {
       toast.error("请输入 Workflow ID");
       return;
     }
-    if (!inputSchema.length) {
+    const validInputs = inputSchema.filter((r) => r.key.trim() !== "");
+    if (!validInputs.length) {
       toast.error("请至少配置一列输入");
+      return;
+    }
+    const inputKeys = validInputs.map((r) => r.key.trim());
+    if (new Set(inputKeys).size !== inputKeys.length) {
+      toast.error("输入列 Key 不能重复");
+      return;
+    }
+    const validOutputs = outputSchema.filter((r) => r.path.trim() !== "");
+    const outputPaths = validOutputs.map((r) => r.path.trim());
+    if (outputPaths.length && new Set(outputPaths).size !== outputPaths.length) {
+      toast.error("输出列 Key/Path 不能重复");
       return;
     }
     setLoading(true);
@@ -135,8 +164,8 @@ export default function ProjectEditPage() {
             name: name.trim(),
             workflowId: workflowId.trim(),
             apiToken: apiToken.trim() || null,
-            inputSchema,
-            outputSchema,
+            inputSchema: validInputs.map((r) => ({ ...r, label: r.label.trim() || r.key.trim() })),
+            outputSchema: validOutputs.map((r) => ({ ...r, key: r.path.replace(/\./g, "_"), label: r.label.trim() || r.path.trim() })),
           }),
         });
         const data = await res.json();
@@ -152,8 +181,8 @@ export default function ProjectEditPage() {
           name: name.trim(),
           workflowId: workflowId.trim(),
           apiToken: apiToken.trim() || null,
-          inputSchema,
-          outputSchema,
+          inputSchema: validInputs.map((r) => ({ ...r, label: r.label.trim() || r.key.trim() })),
+          outputSchema: validOutputs.map((r) => ({ ...r, key: r.path.replace(/\./g, "_"), label: r.label.trim() || r.path.trim() })),
         }),
       });
       const data = await res.json();
@@ -248,16 +277,24 @@ export default function ProjectEditPage() {
               </div>
 
               <div>
-                <Label className="text-zinc-700 font-medium">Input Columns</Label>
+                <div className="flex items-center justify-between">
+                  <Label className="text-zinc-700 font-medium">Input Columns</Label>
+                  <Button type="button" variant="outline" size="sm" onClick={addInputRow} className="gap-1">
+                    <Plus className="h-4 w-4" />
+                    Add Input
+                  </Button>
+                </div>
                 <div className="mt-2 space-y-2">
+                  {inputSchema.length === 0 && (
+                    <p className="text-sm text-zinc-500 py-2">点击 Add Input 或左侧 Auto Parse 添加列</p>
+                  )}
                   {inputSchema.map((item, i) => (
-                    <div key={item.key + i} className="flex gap-2 items-center flex-wrap">
-                      <Input value={item.key} readOnly className="flex-1 min-w-[100px] bg-zinc-50 font-mono text-xs" />
+                    <div key={`input-${i}`} className="flex gap-2 items-center flex-wrap">
                       <Input
-                        value={item.label}
-                        onChange={(e) => setInputItem(i, "label", e.target.value)}
-                        placeholder="显示名"
-                        className="flex-1 min-w-[100px]"
+                        value={item.key}
+                        onChange={(e) => setInputItem(i, "key", e.target.value)}
+                        placeholder="e.g. prompt, image"
+                        className="flex-1 min-w-[100px] font-mono text-xs"
                       />
                       <Select
                         value={item.type}
@@ -274,25 +311,40 @@ export default function ProjectEditPage() {
                           ))}
                         </SelectContent>
                       </Select>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0 text-zinc-400 hover:text-red-600 hover:bg-red-50"
+                        onClick={() => removeInputRow(i)}
+                        aria-label="删除"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   ))}
-                  {inputSchema.length === 0 && (
-                    <p className="text-sm text-zinc-500">左侧粘贴 cURL 后点击 Auto Parse</p>
-                  )}
                 </div>
               </div>
 
               <div>
-                <Label className="text-zinc-700 font-medium">Output Columns</Label>
+                <div className="flex items-center justify-between">
+                  <Label className="text-zinc-700 font-medium">Output Columns</Label>
+                  <Button type="button" variant="outline" size="sm" onClick={addOutputRow} className="gap-1">
+                    <Plus className="h-4 w-4" />
+                    Add Output
+                  </Button>
+                </div>
                 <div className="mt-2 space-y-2">
+                  {outputSchema.length === 0 && (
+                    <p className="text-sm text-zinc-500 py-2">点击 Add Output 或左侧 Auto Parse 添加列</p>
+                  )}
                   {outputSchema.map((item, i) => (
-                    <div key={item.key + i} className="flex gap-2 items-center flex-wrap">
-                      <Input value={item.path} readOnly className="flex-1 min-w-[100px] bg-zinc-50 font-mono text-xs" />
+                    <div key={`output-${i}`} className="flex gap-2 items-center flex-wrap">
                       <Input
-                        value={item.label}
-                        onChange={(e) => setOutputItem(i, "label", e.target.value)}
-                        placeholder="显示名"
-                        className="flex-1 min-w-[100px]"
+                        value={item.path}
+                        onChange={(e) => setOutputItem(i, "path", e.target.value)}
+                        placeholder="e.g. data.image_url"
+                        className="flex-1 min-w-[100px] font-mono text-xs"
                       />
                       <Select
                         value={item.type}
@@ -309,11 +361,18 @@ export default function ProjectEditPage() {
                           ))}
                         </SelectContent>
                       </Select>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0 text-zinc-400 hover:text-red-600 hover:bg-red-50"
+                        onClick={() => removeOutputRow(i)}
+                        aria-label="删除"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   ))}
-                  {outputSchema.length === 0 && (
-                    <p className="text-sm text-zinc-500">左侧粘贴 JSON 响应后点击 Auto Parse</p>
-                  )}
                 </div>
               </div>
 
