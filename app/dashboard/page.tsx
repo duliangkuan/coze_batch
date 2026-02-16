@@ -50,17 +50,6 @@ export default function DashboardPage() {
     return Icon ? <Icon className="w-5 h-5" /> : <Zap className="w-5 h-5" />;
   };
 
-  const formatDate = (d: string | null) => {
-    if (!d) return "从未运行";
-    const date = new Date(d);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    if (diff < 60000) return "刚刚";
-    if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`;
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`;
-    return date.toLocaleDateString();
-  };
-
   const handleDeleteProject = async (e: React.MouseEvent, projectId: string) => {
     e.stopPropagation();
     if (!window.confirm("确定要永久删除这个项目及其所有运行数据吗？")) return;
@@ -136,9 +125,6 @@ export default function DashboardPage() {
                     </div>
                     <div>
                       <h2 className="font-medium text-zinc-900">{p.name}</h2>
-                      <p className="text-xs text-zinc-500 mt-0.5">
-                        上次运行: {formatDate(p.lastRunAt)}
-                      </p>
                     </div>
                   </div>
                   {isAdmin && (
