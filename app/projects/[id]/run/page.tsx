@@ -245,19 +245,19 @@ export default function ProjectRunPage() {
       e.target.value = "";
       if (!fileList?.length || !colKey || !project) return;
 
-      const files = Array.from(fileList);
-      files.sort((a, b) =>
+      // Natural sort: 1.jpg before 10.jpg
+      const sortedFiles = Array.from(fileList).sort((a, b) =>
         a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" })
       );
+      const total = sortedFiles.length;
 
       setBatchUploading(true);
-      const total = files.length;
       const urls: string[] = [];
 
       try {
-        for (let i = 0; i < files.length; i++) {
-          toast.loading(`正在上传 ${i + 1}/${total} 个文件...`, { id: "batch-upload" });
-          const file = files[i];
+        for (let i = 0; i < sortedFiles.length; i++) {
+          const file = sortedFiles[i];
+          toast.loading(`正在上传 (${i + 1}/${total})...`, { id: "batch-upload" });
           const blob = await upload(file.name, file, {
             access: "public",
             handleUploadUrl: "/api/upload",
@@ -295,7 +295,7 @@ export default function ProjectRunPage() {
           return next;
         });
 
-        toast.success(`已上传并填入 ${urls.length} 个文件`);
+        toast.success(`成功导入 ${urls.length} 个文件`);
       } catch (err) {
         toast.dismiss("batch-upload");
         toast.error(err instanceof Error ? err.message : "批量上传失败");
