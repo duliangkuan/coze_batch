@@ -28,6 +28,7 @@ const OUTPUT_TYPES = [
   { value: "text", label: "Text" },
   { value: "image", label: "Image" },
   { value: "link", label: "Link" },
+  { value: "video", label: "Video" },
 ];
 
 const CURL_PLACEHOLDER = 'curl -X POST ... -d \'{"parameters": {...}}\'';
@@ -287,7 +288,7 @@ export default function ProjectEditPage() {
                       />
                       <Select
                         value={item.type}
-                        onValueChange={(v) => setOutputItem(i, "type", v as "text" | "image" | "link")}
+                        onValueChange={(v) => setOutputItem(i, "type", v as "text" | "image" | "link" | "video")}
                       >
                         <SelectTrigger className="w-[100px]">
                           <SelectValue />

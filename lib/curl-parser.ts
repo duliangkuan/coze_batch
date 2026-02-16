@@ -72,7 +72,7 @@ export interface OutputSchemaItem {
   key: string;
   path: string;
   label: string;
-  type: "text" | "image" | "link";
+  type: "text" | "image" | "link" | "video";
 }
 
 function isUrlLike(value: unknown): boolean {
@@ -144,8 +144,13 @@ export function parseResponseToSchema(jsonString: string): OutputSchemaItem[] {
     const items = flattenKeys(data);
     return items.map(({ path, value }) => {
       const key = path.replace(/\./g, "_");
-      let type: "text" | "image" | "link" = "text";
-      if (isUrlLike(value)) type = /\.(mp4|webm)/i.test(String(value)) ? "link" : "image";
+      let type: "text" | "image" | "link" | "video" = "text";
+      if (isUrlLike(value)) {
+        const s = String(value);
+        if (/\.(mp4|webm|mov|ogg)(\?|$)/i.test(s)) type = "video";
+        else if (/\.(png|jpg|jpeg|gif|webp)(\?|$)/i.test(s)) type = "image";
+        else type = "link";
+      }
       return { key, path, label: path, type };
     });
   } catch (e) {

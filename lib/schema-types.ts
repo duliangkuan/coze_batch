@@ -10,7 +10,7 @@ export const outputSchemaItem = z.object({
   key: z.string(),
   path: z.string(),
   label: z.string(),
-  type: z.enum(["text", "image", "link"]),
+  type: z.enum(["text", "image", "link", "video"]),
 });
 
 export const inputSchemaArray = z.array(inputSchemaItem);

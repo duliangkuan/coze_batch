@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { FileUploadCell } from "@/components/runner/file-cell";
+import { FileUploadCell, MediaPreviewDialog, isVideoUrl, isMediaUrl } from "@/components/runner/file-cell";
 import { useBatchRunner, type RunnerRow, type ProjectConfig } from "@/hooks/use-batch-runner";
 import { Play, Loader2, ArrowLeft, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -138,6 +138,7 @@ export default function ProjectRunPage() {
   };
 
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
+  const [outputPreviewUrl, setOutputPreviewUrl] = useState<string | null>(null);
   const handleClearAll = () => {
     setRows([]);
     setClearDialogOpen(false);
@@ -360,13 +361,43 @@ export default function ProjectRunPage() {
                       )}
                     </td>
                   ))}
-                  {outputCols.map((col) => (
-                    <td key={col.key} className="py-1 px-3">
-                      <div className="min-h-[36px] flex items-center text-sm text-zinc-700">
-                        {row[col.key] != null ? String(row[col.key]) : "—"}
-                      </div>
-                    </td>
-                  ))}
+                  {outputCols.map((col) => {
+                    const val = row[col.key];
+                    const str = val != null ? String(val) : "";
+                    const isMedia = str && isMediaUrl(str);
+                    return (
+                      <td key={col.key} className="py-1 px-3">
+                        <div className="min-h-[36px] flex items-center text-sm text-zinc-700">
+                          {isMedia ? (
+                            <div
+                              className="flex items-center gap-1 cursor-pointer hover:opacity-90"
+                              onClick={() => setOutputPreviewUrl(str)}
+                            >
+                              {isVideoUrl(str) ? (
+                                <video
+                                  src={str}
+                                  muted
+                                  playsInline
+                                  className="h-10 w-auto max-w-[120px] rounded object-cover border border-zinc-200"
+                                  title="点击预览"
+                                />
+                              ) : (
+                                <img
+                                  src={str}
+                                  alt=""
+                                  className="w-10 h-10 object-cover rounded border border-zinc-200"
+                                  title="点击预览"
+                                />
+                              )}
+                              <span className="text-xs text-zinc-500">预览</span>
+                            </div>
+                          ) : (
+                            str || "—"
+                          )}
+                        </div>
+                      </td>
+                    );
+                  })}
                   <td className="w-10 py-1 px-2 text-center align-middle">
                     <Button
                       type="button"
@@ -425,6 +456,9 @@ export default function ProjectRunPage() {
           )}
         </div>
       </div>
+      {outputPreviewUrl && (
+        <MediaPreviewDialog url={outputPreviewUrl} onClose={() => setOutputPreviewUrl(null)} />
+      )}
     </div>
   );
 }

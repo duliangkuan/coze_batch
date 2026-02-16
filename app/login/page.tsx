@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +12,7 @@ const GOD_TRIGGERS = [":godmode", "sudo su"];
 const GOD_USERNAME = "root@system:~# ";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -40,6 +42,7 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           username: isAdminMode ? "admin" : username.trim(),
           password,
@@ -51,7 +54,9 @@ export default function LoginPage() {
         return;
       }
       toast.success(data.message || "登录成功");
-      window.location.href = data.role === "admin" ? "/admin" : "/dashboard";
+      const dest = data.role === "admin" ? "/admin" : "/dashboard";
+      await router.push(dest);
+      router.refresh();
     } catch {
       toast.error("网络错误");
     } finally {
