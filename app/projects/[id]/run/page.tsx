@@ -354,18 +354,6 @@ export default function ProjectRunPage() {
     toast.success("表格已清空");
   };
 
-  const handleClearCache = useCallback(() => {
-    if (typeof window === "undefined") return;
-    const storageKey = `coze_runner_cache_${id}`;
-    localStorage.removeItem(storageKey);
-    if (project) {
-      setRows([createEmptyRow(project.inputSchema, project.outputSchema)]);
-    } else {
-      setRows([]);
-    }
-    toast.success("已重置");
-  }, [id, project]);
-
   const handlePaste = useCallback(
     (e: React.ClipboardEvent) => {
       const text = e.clipboardData.getData("text");
@@ -719,17 +707,6 @@ export default function ProjectRunPage() {
         <div className="mt-4 flex items-center gap-2">
           <Button variant="outline" onClick={addRow} disabled={isRunning}>
             添加一行
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-zinc-500 hover:text-zinc-700"
-            onClick={handleClearCache}
-            disabled={isRunning}
-            title="清除本地缓存并重置表格"
-            aria-label="清除缓存"
-          >
-            清除缓存
           </Button>
           {rows.length > 0 && (
             <>
