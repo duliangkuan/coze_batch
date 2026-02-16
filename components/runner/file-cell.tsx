@@ -27,17 +27,15 @@ export function FileUploadCell({ value, url, onUpload, disabled, className }: Fi
     formData.append("file", file);
 
     try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("coze_api_token") : null;
-      const res = await fetch("/api/proxy/upload", {
+      const res = await fetch("/api/upload", {
         method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: formData,
       });
       const data = await res.json();
-      if (data.code !== 0 || !data.data) throw new Error(data.msg || "上传失败");
-      const id = data.data.id ?? data.data.file_id;
-      const fileUrl = data.data.url ?? data.data.file_url ?? "";
-      onUpload(id, fileUrl);
+      if (!res.ok) throw new Error(data.error || "上传失败");
+      const fileUrl = data.url;
+      if (!fileUrl) throw new Error("未返回文件地址");
+      onUpload(fileUrl, fileUrl);
     } catch (err) {
       setError(err instanceof Error ? err.message : "上传失败");
     } finally {

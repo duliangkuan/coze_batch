@@ -24,6 +24,7 @@
     "@radix-ui/react-toast": "^1.2.0",
     "@radix-ui/react-tooltip": "^1.1.0",
     "@tanstack/react-table": "^8.20.0",
+    "@vercel/blob": "^2.2.0",
     "axios": "^1.7.0",
     "bcryptjs": "^2.4.3",
     "class-variance-authority": "^0.7.0",
