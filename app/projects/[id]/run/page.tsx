@@ -2,11 +2,12 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { upload } from "@vercel/blob/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { FileUploadCell, MediaPreviewDialog, isVideoUrl, isMediaUrl } from "@/components/runner/file-cell";
+import { FileUploadCell, MediaPreviewDialog, FileCard, isVideoUrl, isImageUrl } from "@/components/runner/file-cell";
 import { useBatchRunner, type RunnerRow, type ProjectConfig } from "@/hooks/use-batch-runner";
-import { Play, Loader2, ArrowLeft, Trash2 } from "lucide-react";
+import { Play, Loader2, ArrowLeft, Trash2, UploadCloud, FolderDown } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
@@ -139,6 +140,169 @@ export default function ProjectRunPage() {
 
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
   const [outputPreviewUrl, setOutputPreviewUrl] = useState<string | null>(null);
+  const [batchUploadColumnKey, setBatchUploadColumnKey] = useState<string | null>(null);
+  const [batchUploading, setBatchUploading] = useState(false);
+  const [batchDownloadProgress, setBatchDownloadProgress] = useState<{
+    colKey: string;
+    current: number;
+    total: number;
+  } | null>(null);
+  const batchUploadInputRef = useRef<HTMLInputElement>(null);
+
+  const FILE_URL_EXT = /\.(png|jpg|jpeg|gif|webp|mp4|webm|mov|ogg|pdf|doc|docx|txt|md|csv|xls|xlsx)(\?|$)/i;
+  const isFileLikeUrl = useCallback((v: unknown): v is string => {
+    if (typeof v !== "string" || !v.trim()) return false;
+    if (!/^https?:\/\//i.test(v)) return false;
+    try {
+      return FILE_URL_EXT.test(new URL(v).pathname);
+    } catch {
+      return FILE_URL_EXT.test(v);
+    }
+  }, []);
+
+  const isDownloadableOutputColumn = useCallback(
+    (col: OutputSchemaItem, currentRows: RunnerRow[]) => {
+      const t = (col.type || "").toLowerCase();
+      if (t === "file") return true;
+      const fileUrlCount = currentRows.filter((row) => isFileLikeUrl(row[col.key])).length;
+      return fileUrlCount > 1;
+    },
+    [isFileLikeUrl]
+  );
+
+  const getDownloadFilename = useCallback((url: string, index: number): string => {
+    try {
+      const path = new URL(url).pathname;
+      const segment = path.split("/").filter(Boolean).pop();
+      if (segment && /\.(png|jpg|jpeg|gif|webp|mp4|pdf|doc|docx|txt|md|csv|xls|xlsx)(\?|$)/i.test(segment))
+        return decodeURIComponent(segment);
+    } catch {
+      // ignore
+    }
+    const ext = url.match(/\.(png|jpg|jpeg|gif|webp|mp4|pdf|doc|docx|txt|md|csv|xls|xlsx)(\?|$)/i)?.[1] ?? "bin";
+    return `file_${String(index + 1).padStart(2, "0")}.${ext}`;
+  }, []);
+
+  const handleBatchDownload = useCallback(
+    async (colKey: string) => {
+      const currentRows = rowsRef.current;
+      const urls = currentRows
+        .map((r) => r[colKey])
+        .filter((v): v is string => isFileLikeUrl(v));
+      if (urls.length === 0) {
+        toast.error("该列没有可下载的文件链接");
+        return;
+      }
+      const total = urls.length;
+      setBatchDownloadProgress({ colKey, current: 0, total });
+      toast.info(`开始批量下载 ${total} 个文件，请允许浏览器下载多个文件...`, {
+        id: "batch-download-start",
+      });
+      for (let i = 0; i < urls.length; i++) {
+        const url = urls[i];
+        const filename = getDownloadFilename(url, i);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        a.rel = "noopener noreferrer";
+        a.style.display = "none";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setBatchDownloadProgress((prev) =>
+          prev?.colKey === colKey ? { ...prev, current: i + 1 } : prev
+        );
+        if (i < urls.length - 1) await new Promise((r) => setTimeout(r, 800));
+      }
+      setBatchDownloadProgress(null);
+      toast.dismiss("batch-download-start");
+      toast.success("所有文件下载完成");
+    },
+    [isFileLikeUrl, getDownloadFilename]
+  );
+
+  const isFileColumn = useCallback((col: InputSchemaItem) => {
+    return (col.type || "").toLowerCase() === "file";
+  }, []);
+
+  const handleBatchUploadColumnClick = useCallback(
+    (colKey: string) => {
+      if (!project || isRunning || batchUploading) return;
+      setBatchUploadColumnKey(colKey);
+      batchUploadInputRef.current?.click();
+    },
+    [project, isRunning, batchUploading]
+  );
+
+  const handleBatchFileChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const colKey = batchUploadColumnKey;
+      setBatchUploadColumnKey(null);
+      const fileList = e.target.files;
+      e.target.value = "";
+      if (!fileList?.length || !colKey || !project) return;
+
+      const files = Array.from(fileList);
+      files.sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" })
+      );
+
+      setBatchUploading(true);
+      const total = files.length;
+      const urls: string[] = [];
+
+      try {
+        for (let i = 0; i < files.length; i++) {
+          toast.loading(`正在上传 ${i + 1}/${total} 个文件...`, { id: "batch-upload" });
+          const file = files[i];
+          const blob = await upload(file.name, file, {
+            access: "public",
+            handleUploadUrl: "/api/upload/client",
+          });
+          urls.push(blob.url);
+        }
+        toast.dismiss("batch-upload");
+
+        const inputCols = project.inputSchema as InputSchemaItem[];
+        const col = inputCols.find((c) => c.key === colKey);
+        if (!col) return;
+
+        setRows((prev) => {
+          const emptyIndices: number[] = [];
+          prev.forEach((row, i) => {
+            const val = String(row[colKey] ?? "").trim();
+            if (!val) emptyIndices.push(i);
+          });
+          const next = [...prev];
+          let urlIndex = 0;
+          for (const idx of emptyIndices) {
+            if (urlIndex >= urls.length) break;
+            const url = urls[urlIndex++];
+            next[idx] = { ...next[idx], [colKey]: url, [`_url_${colKey}`]: url };
+          }
+          if (urlIndex < urls.length) {
+            const remaining = urls.slice(urlIndex);
+            remaining.forEach((url) => {
+              const newRow = createEmptyRow(project.inputSchema, project.outputSchema);
+              newRow[colKey] = url;
+              (newRow as Record<string, unknown>)[`_url_${colKey}`] = url;
+              next.push(newRow);
+            });
+          }
+          return next;
+        });
+
+        toast.success(`已上传并填入 ${urls.length} 个文件`);
+      } catch (err) {
+        toast.dismiss("batch-upload");
+        toast.error(err instanceof Error ? err.message : "批量上传失败");
+      } finally {
+        setBatchUploading(false);
+      }
+    },
+    [batchUploadColumnKey, project]
+  );
+
   const handleClearAll = () => {
     setRows([]);
     setClearDialogOpen(false);
@@ -277,6 +441,13 @@ export default function ProjectRunPage() {
         </div>
       </header>
 
+      <input
+        ref={batchUploadInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={handleBatchFileChange}
+      />
       <div
         className="flex-1 overflow-auto p-4"
         tabIndex={0}
@@ -294,17 +465,49 @@ export default function ProjectRunPage() {
                     key={col.key}
                     className="py-2 px-3 text-left text-xs font-medium text-zinc-600 border-b border-zinc-200"
                   >
-                    {col.label || col.key}
+                    <span className="inline-flex items-center">
+                      {col.label || col.key}
+                      {isFileColumn(col) && (
+                        <UploadCloud
+                          className="h-4 w-4 text-muted-foreground/50 hover:text-primary cursor-pointer ml-1"
+                          onClick={() => handleBatchUploadColumnClick(col.key)}
+                          aria-label={`批量上传 ${col.label || col.key}`}
+                        />
+                      )}
+                    </span>
                   </th>
                 ))}
-                {outputCols.map((col) => (
-                  <th
-                    key={col.key}
-                    className="py-2 px-3 text-left text-xs font-medium text-zinc-600 border-b border-zinc-200"
-                  >
-                    {col.label || col.key}
-                  </th>
-                ))}
+                {outputCols.map((col) => {
+                  const showBatchDownload = isDownloadableOutputColumn(col, rows);
+                  const downloading = batchDownloadProgress?.colKey === col.key;
+                  return (
+                    <th
+                      key={col.key}
+                      className="py-2 px-3 text-left text-xs font-medium text-zinc-600 border-b border-zinc-200"
+                    >
+                      <span className="inline-flex items-center">
+                        {col.label || col.key}
+                        {showBatchDownload && (
+                          <button
+                            type="button"
+                            onClick={() => handleBatchDownload(col.key)}
+                            disabled={downloading}
+                            className="h-4 w-4 text-muted-foreground/50 hover:text-primary cursor-pointer ml-2 disabled:opacity-50"
+                            title="批量下载所有文件"
+                            aria-label="批量下载所有文件"
+                          >
+                            <FolderDown className="h-4 w-4" />
+                          </button>
+                        )}
+                        {downloading && batchDownloadProgress && (
+                          <span className="ml-1 text-[10px] text-muted-foreground tabular-nums">
+                            ({batchDownloadProgress.current}/{batchDownloadProgress.total})
+                          </span>
+                        )}
+                      </span>
+                    </th>
+                  );
+                })}
                 <th className="w-10 py-2 px-2 text-center text-xs font-medium text-zinc-500 border-b border-zinc-200">
                   操作
                 </th>
@@ -339,41 +542,49 @@ export default function ProjectRunPage() {
                     {row.status === "running" && <span>🔵</span>}
                     {(!row.status || row.status === "idle") && <span className="text-zinc-300">○</span>}
                   </td>
-                  {inputCols.map((col) => (
-                    <td key={col.key} className="py-1 px-3">
-                      {col.type === "image" ? (
-                        <FileUploadCell
-                          value={row[col.key] as string | undefined}
-                          url={row[`_url_${col.key}`] as string | undefined}
-                          onUpload={(fileId, url) => {
-                            updateRow(rowIndex, { [col.key]: fileId, [`_url_${col.key}`]: url });
-                          }}
-                          disabled={isRunning}
-                        />
-                      ) : (
-                        <Input
-                          value={(row[col.key] as string) ?? ""}
-                          onChange={(e) => updateRow(rowIndex, { [col.key]: e.target.value })}
-                          placeholder={col.label}
-                          className="min-h-[36px] border-zinc-200 text-sm"
-                          disabled={isRunning}
-                        />
-                      )}
-                    </td>
-                  ))}
+                  {inputCols.map((col) => {
+                    const isFileInput = isFileColumn(col);
+                    return (
+                      <td key={col.key} className="py-1 px-3">
+                        {isFileInput ? (
+                          <FileUploadCell
+                            value={row[col.key] as string | undefined}
+                            url={row[`_url_${col.key}`] as string | undefined}
+                            onUpload={(fileId, url) => {
+                              updateRow(rowIndex, { [col.key]: fileId, [`_url_${col.key}`]: url });
+                            }}
+                            disabled={isRunning}
+                          />
+                        ) : (
+                          <Input
+                            value={(row[col.key] as string) ?? ""}
+                            onChange={(e) => updateRow(rowIndex, { [col.key]: e.target.value })}
+                            placeholder={col.label}
+                            className="min-h-[36px] border-zinc-200 text-sm"
+                            disabled={isRunning}
+                          />
+                        )}
+                      </td>
+                    );
+                  })}
                   {outputCols.map((col) => {
                     const val = row[col.key];
                     const str = val != null ? String(val) : "";
-                    const isMedia = str && isMediaUrl(str);
+                    const colIsFile = (col.type || "").toLowerCase() === "file";
+                    const isHttp = str && /^https?:\/\//i.test(str);
+                    const isVideo = str && isVideoUrl(str);
+                    const isImage = str && isImageUrl(str);
+                    const isMedia = isVideo || isImage;
+                    const renderAsFile = colIsFile && isHttp;
                     return (
                       <td key={col.key} className="py-1 px-3">
                         <div className="min-h-[36px] flex items-center text-sm text-zinc-700">
-                          {isMedia ? (
+                          {renderAsFile && isMedia ? (
                             <div
                               className="flex items-center gap-1 cursor-pointer hover:opacity-90"
                               onClick={() => setOutputPreviewUrl(str)}
                             >
-                              {isVideoUrl(str) ? (
+                              {isVideo ? (
                                 <video
                                   src={str}
                                   muted
@@ -391,6 +602,33 @@ export default function ProjectRunPage() {
                               )}
                               <span className="text-xs text-zinc-500">预览</span>
                             </div>
+                          ) : renderAsFile && isHttp ? (
+                            <FileCard url={str} />
+                          ) : !colIsFile && isMedia ? (
+                            <div
+                              className="flex items-center gap-1 cursor-pointer hover:opacity-90"
+                              onClick={() => setOutputPreviewUrl(str)}
+                            >
+                              {isVideo ? (
+                                <video
+                                  src={str}
+                                  muted
+                                  playsInline
+                                  className="h-10 w-auto max-w-[120px] rounded object-cover border border-zinc-200"
+                                  title="点击预览"
+                                />
+                              ) : (
+                                <img
+                                  src={str}
+                                  alt=""
+                                  className="w-10 h-10 object-cover rounded border border-zinc-200"
+                                  title="点击预览"
+                                />
+                              )}
+                              <span className="text-xs text-zinc-500">预览</span>
+                            </div>
+                          ) : !colIsFile && isHttp ? (
+                            <FileCard url={str} />
                           ) : (
                             str || "—"
                           )}

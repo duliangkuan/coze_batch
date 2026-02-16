@@ -21,14 +21,13 @@ import { toast } from "sonner";
 
 const INPUT_TYPES = [
   { value: "text", label: "Text" },
-  { value: "image", label: "Image" },
+  { value: "file", label: "File/Media" },
 ];
 
 const OUTPUT_TYPES = [
   { value: "text", label: "Text" },
-  { value: "image", label: "Image" },
+  { value: "file", label: "File/Media" },
   { value: "link", label: "Link" },
-  { value: "video", label: "Video" },
 ];
 
 const CURL_PLACEHOLDER = 'curl -X POST ... -d \'{"parameters": {...}}\'';
@@ -60,8 +59,17 @@ export default function ProjectEditPage() {
         setName(data.name || "");
         setWorkflowId(data.workflowId || "");
         setApiToken(data.apiToken ?? "");
-        setInputSchema(Array.isArray(data.inputSchema) ? data.inputSchema : []);
-        setOutputSchema(Array.isArray(data.outputSchema) ? data.outputSchema : []);
+        type LegacyInput = Omit<InputSchemaItem, "type"> & { type: string };
+        type LegacyOutput = Omit<OutputSchemaItem, "type"> & { type: string };
+        const normInput = (arr: LegacyInput[]): InputSchemaItem[] =>
+          arr.map((c) => ({ ...c, type: (c.type === "image" || c.type === "media" ? "file" : c.type === "file" ? "file" : "text") as InputSchemaItem["type"] }));
+        const normOutput = (arr: LegacyOutput[]): OutputSchemaItem[] =>
+          arr.map((c) => ({
+            ...c,
+            type: (c.type === "image" || c.type === "video" || c.type === "media" ? "file" : c.type === "link" ? "link" : c.type === "file" ? "file" : "text") as OutputSchemaItem["type"],
+          }));
+        setInputSchema(Array.isArray(data.inputSchema) ? normInput(data.inputSchema as LegacyInput[]) : []);
+        setOutputSchema(Array.isArray(data.outputSchema) ? normOutput(data.outputSchema as LegacyOutput[]) : []);
       })
       .catch(() => toast.error("加载项目失败"))
       .finally(() => setFetchLoading(false));
@@ -253,7 +261,7 @@ export default function ProjectEditPage() {
                       />
                       <Select
                         value={item.type}
-                        onValueChange={(v) => setInputItem(i, "type", v as "text" | "image")}
+                        onValueChange={(v) => setInputItem(i, "type", v as "text" | "file")}
                       >
                         <SelectTrigger className="w-[100px]">
                           <SelectValue />
@@ -288,7 +296,7 @@ export default function ProjectEditPage() {
                       />
                       <Select
                         value={item.type}
-                        onValueChange={(v) => setOutputItem(i, "type", v as "text" | "image" | "link" | "video")}
+                        onValueChange={(v) => setOutputItem(i, "type", v as "text" | "file" | "link")}
                       >
                         <SelectTrigger className="w-[100px]">
                           <SelectValue />

@@ -5,7 +5,7 @@
 export interface InputSchemaItem {
   key: string;
   label: string;
-  type: "text" | "image";
+  type: "text" | "file";
 }
 
 /** 从 cURL 中解析出的额外元数据 */
@@ -57,11 +57,11 @@ export function parseCurlCommand(curl: string): InputSchemaItem[] {
     }
 
     const params = parsed.parameters as Record<string, unknown>;
-    return Object.keys(params).map((key) => ({
-      key,
-      label: key,
-      type: "text" as const,
-    }));
+    return Object.keys(params).map((key) => {
+      const value = params[key];
+      const type = isFileUrl(value) ? ("file" as const) : ("text" as const);
+      return { key, label: key, type };
+    });
   } catch (e) {
     console.error("Parse cURL failed", e);
     return [];
@@ -72,14 +72,27 @@ export interface OutputSchemaItem {
   key: string;
   path: string;
   label: string;
-  type: "text" | "image" | "link" | "video";
+  type: "text" | "file" | "link";
 }
 
-function isUrlLike(value: unknown): boolean {
+/** 嗅探：字符串是否为带已知文件后缀的 URL，自动识别为 File 类型（含 query 的 URL 按 pathname 判断） */
+const FILE_EXT_REGEX = /\.(png|jpg|jpeg|gif|webp|mp4|mov|webm|pdf|doc|docx|xls|xlsx|csv|txt|md)(\?|$)/i;
+
+function isFileUrl(value: unknown): boolean {
   if (typeof value !== "string") return false;
-  if (!value.startsWith("http")) return false;
-  const lower = value.toLowerCase();
-  return /\.(png|jpg|jpeg|gif|webp|mp4|webm)(\?|$)/i.test(lower) || lower.includes("image") || lower.includes("video");
+  const s = value.trim();
+  if (!/^https?:\/\//i.test(s)) return false;
+  try {
+    return FILE_EXT_REGEX.test(new URL(s).pathname);
+  } catch {
+    return FILE_EXT_REGEX.test(s);
+  }
+}
+
+function isHttpUrl(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  const s = value.trim();
+  return /^https?:\/\//i.test(s);
 }
 
 function flattenKeys(obj: unknown, prefix = ""): { path: string; value: unknown }[] {
@@ -144,12 +157,10 @@ export function parseResponseToSchema(jsonString: string): OutputSchemaItem[] {
     const items = flattenKeys(data);
     return items.map(({ path, value }) => {
       const key = path.replace(/\./g, "_");
-      let type: "text" | "image" | "link" | "video" = "text";
-      if (isUrlLike(value)) {
-        const s = String(value);
-        if (/\.(mp4|webm|mov|ogg)(\?|$)/i.test(s)) type = "video";
-        else if (/\.(png|jpg|jpeg|gif|webp)(\?|$)/i.test(s)) type = "image";
-        else type = "link";
+      let type: "text" | "file" | "link" = "text";
+      if (typeof value === "string" && value.trim()) {
+        if (isFileUrl(value)) type = "file";
+        else if (isHttpUrl(value)) type = "link";
       }
       return { key, path, label: path, type };
     });

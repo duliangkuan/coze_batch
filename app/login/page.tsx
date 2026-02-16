@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +11,6 @@ const GOD_TRIGGERS = [":godmode", "sudo su"];
 const GOD_USERNAME = "root@system:~# ";
 
 export default function LoginPage() {
-  const router = useRouter();
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -55,8 +53,8 @@ export default function LoginPage() {
       }
       toast.success(data.message || "登录成功");
       const dest = data.role === "admin" ? "/admin" : "/dashboard";
-      await router.push(dest);
-      router.refresh();
+      // 使用完整跳转确保 Cookie 已写入并随请求发送，避免 SPA 下登录死循环
+      window.location.href = dest;
     } catch {
       toast.error("网络错误");
     } finally {

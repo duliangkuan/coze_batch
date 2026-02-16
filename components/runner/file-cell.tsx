@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { Upload, Loader2, X } from "lucide-react";
+import { Upload, Loader2, X, FileText, FileType2, File, FileSpreadsheet } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const VIDEO_EXT = /\.(mp4|webm|mov|ogg)$/i;
@@ -28,6 +28,46 @@ export function isImageUrl(url: string): boolean {
 
 export function isMediaUrl(url: string): boolean {
   return /^https?:\/\//i.test(url) && (isVideoUrl(url) || isImageUrl(url));
+}
+
+/** 从 URL 解析文件名（用于 File Card 展示） */
+function getFilenameFromUrl(url: string): string {
+  try {
+    const path = new URL(url).pathname;
+    const segment = path.split("/").filter(Boolean).pop();
+    return segment ? decodeURIComponent(segment) : "Document";
+  } catch {
+    return "Document";
+  }
+}
+
+/** 根据 URL/文件名返回 File Card 使用的图标与样式 */
+function getFileCardIcon(url: string) {
+  const lower = url.toLowerCase();
+  if (lower.includes(".pdf")) return { Icon: FileText, className: "text-rose-500 shrink-0" };
+  if (/\.(doc|docx)(\?|$)/i.test(lower)) return { Icon: FileType2, className: "text-blue-500 shrink-0" };
+  if (/\.(xls|xlsx|csv)(\?|$)/i.test(lower)) return { Icon: FileSpreadsheet, className: "text-green-500 shrink-0" };
+  return { Icon: File, className: "text-zinc-500 shrink-0" };
+}
+
+/** 通用文件卡片：点击在新标签页打开/下载 */
+export function FileCard({ url, className }: { url: string; className?: string }) {
+  const label = getFilenameFromUrl(url);
+  const { Icon, className: iconClass } = getFileCardIcon(url);
+  return (
+    <button
+      type="button"
+      onClick={() => window.open(url, "_blank")}
+      className={cn(
+        "flex items-center gap-2 px-2 py-1 border rounded bg-muted/10 hover:bg-muted/20 transition-colors cursor-pointer text-left min-w-0 max-w-full",
+        className
+      )}
+      title={label}
+    >
+      <Icon className={cn("h-4 w-4", iconClass)} />
+      <span className="text-xs truncate">{label}</span>
+    </button>
+  );
 }
 
 interface MediaPreviewDialogProps {
@@ -119,35 +159,43 @@ export function FileUploadCell({ value, url, onUpload, disabled, className }: Fi
   };
 
   if (value && url) {
-    const video = isVideoUrl(url);
-    return (
-      <>
-        <div
-          className={cn("flex items-center gap-2 min-h-[36px]", className)}
-          onClick={() => setPreviewUrl(url)}
-        >
-          {video ? (
-            <video
-              src={url}
-              muted
-              playsInline
-              className="h-10 w-auto max-w-[120px] rounded object-cover border border-zinc-200 cursor-pointer hover:opacity-90"
-              title="点击预览"
-            />
-          ) : (
-            <img
-              src={url}
-              alt=""
-              className="w-10 h-10 object-cover rounded border border-zinc-200 cursor-pointer hover:opacity-90"
-              title="点击预览"
-            />
+    const isImage = isImageUrl(url);
+    const isVideo = isVideoUrl(url);
+    if (isImage || isVideo) {
+      return (
+        <>
+          <div
+            className={cn("flex items-center gap-2 min-h-[36px]", className)}
+            onClick={() => setPreviewUrl(url)}
+          >
+            {isVideo ? (
+              <video
+                src={url}
+                muted
+                playsInline
+                className="h-10 w-auto max-w-[120px] rounded object-cover border border-zinc-200 cursor-pointer hover:opacity-90"
+                title="点击预览"
+              />
+            ) : (
+              <img
+                src={url}
+                alt=""
+                className="w-10 h-10 object-cover rounded border border-zinc-200 cursor-pointer hover:opacity-90"
+                title="点击预览"
+              />
+            )}
+            <span className="text-xs text-zinc-500 truncate max-w-[80px]">已上传</span>
+          </div>
+          {previewUrl && (
+            <MediaPreviewDialog url={previewUrl} onClose={() => setPreviewUrl(null)} />
           )}
-          <span className="text-xs text-zinc-500 truncate max-w-[80px]">已上传</span>
-        </div>
-        {previewUrl && (
-          <MediaPreviewDialog url={previewUrl} onClose={() => setPreviewUrl(null)} />
-        )}
-      </>
+        </>
+      );
+    }
+    return (
+      <div className={cn("min-h-[36px]", className)}>
+        <FileCard url={url} className="min-h-[36px]" />
+      </div>
     );
   }
 
@@ -156,7 +204,6 @@ export function FileUploadCell({ value, url, onUpload, disabled, className }: Fi
       <input
         ref={inputRef}
         type="file"
-        accept="image/*,video/*"
         className="hidden"
         onChange={handleFile}
         disabled={disabled}
