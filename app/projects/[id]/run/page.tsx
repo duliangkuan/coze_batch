@@ -141,6 +141,7 @@ export default function ProjectRunPage() {
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
   const [outputPreviewUrl, setOutputPreviewUrl] = useState<string | null>(null);
   const [batchUploadColumnKey, setBatchUploadColumnKey] = useState<string | null>(null);
+  const batchUploadColumnKeyRef = useRef<string | null>(null);
   const [batchUploading, setBatchUploading] = useState(false);
   const [batchDownloadProgress, setBatchDownloadProgress] = useState<{
     colKey: string;
@@ -228,6 +229,7 @@ export default function ProjectRunPage() {
   const handleBatchUploadColumnClick = useCallback(
     (colKey: string) => {
       if (!project || isRunning || batchUploading) return;
+      batchUploadColumnKeyRef.current = colKey;
       setBatchUploadColumnKey(colKey);
       batchUploadInputRef.current?.click();
     },
@@ -236,7 +238,8 @@ export default function ProjectRunPage() {
 
   const handleBatchFileChange = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const colKey = batchUploadColumnKey;
+      const colKey = batchUploadColumnKeyRef.current;
+      batchUploadColumnKeyRef.current = null;
       setBatchUploadColumnKey(null);
       const fileList = e.target.files;
       e.target.value = "";
@@ -300,7 +303,7 @@ export default function ProjectRunPage() {
         setBatchUploading(false);
       }
     },
-    [batchUploadColumnKey, project]
+    [project]
   );
 
   const handleClearAll = () => {
@@ -468,11 +471,16 @@ export default function ProjectRunPage() {
                     <span className="inline-flex items-center">
                       {col.label || col.key}
                       {isFileColumn(col) && (
-                        <UploadCloud
-                          className="h-4 w-4 text-muted-foreground/50 hover:text-primary cursor-pointer ml-1"
+                        <button
+                          type="button"
                           onClick={() => handleBatchUploadColumnClick(col.key)}
+                          disabled={batchUploading}
+                          className="h-4 w-4 text-muted-foreground/50 hover:text-primary cursor-pointer ml-1 disabled:opacity-50 inline-flex items-center justify-center"
+                          title="批量上传：选择多个文件，将依次填入本列空单元格并自动追加行"
                           aria-label={`批量上传 ${col.label || col.key}`}
-                        />
+                        >
+                          <UploadCloud className="h-4 w-4" />
+                        </button>
                       )}
                     </span>
                   </th>
