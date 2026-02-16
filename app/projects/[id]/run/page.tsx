@@ -241,62 +241,55 @@ export default function ProjectRunPage() {
       const colKey = batchUploadColumnKeyRef.current;
       batchUploadColumnKeyRef.current = null;
       setBatchUploadColumnKey(null);
-      const fileList = e.target.files;
-      e.target.value = "";
-      if (!fileList?.length || !colKey || !project) return;
 
-      // Natural sort: 1.jpg before 10.jpg
-      const sortedFiles = Array.from(fileList).sort((a, b) =>
+      const input = e.target;
+      const fileArray = Array.from(input.files ?? []);
+      input.value = "";
+
+      if (!fileArray.length || !colKey || !project) return;
+
+      const sortedFiles = fileArray.sort((a, b) =>
         a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" })
       );
       const total = sortedFiles.length;
 
       setBatchUploading(true);
-      const urls: string[] = [];
 
       try {
-        for (let i = 0; i < sortedFiles.length; i++) {
-          const file = sortedFiles[i];
-          toast.loading(`正在上传 (${i + 1}/${total})...`, { id: "batch-upload" });
+        let index = 0;
+        for (const file of sortedFiles) {
+          index += 1;
+          toast.loading(`正在上传 (${index}/${total})...`, { id: "batch-upload" });
           const blob = await upload(file.name, file, {
             access: "public",
             handleUploadUrl: "/api/upload",
           });
-          urls.push(blob.url);
-        }
-        toast.dismiss("batch-upload");
+          const url = blob.url;
 
-        const inputCols = project.inputSchema as InputSchemaItem[];
-        const col = inputCols.find((c) => c.key === colKey);
-        if (!col) return;
-
-        setRows((prev) => {
-          const emptyIndices: number[] = [];
-          prev.forEach((row, i) => {
-            const val = String(row[colKey] ?? "").trim();
-            if (!val) emptyIndices.push(i);
-          });
-          const next = [...prev];
-          let urlIndex = 0;
-          for (const idx of emptyIndices) {
-            if (urlIndex >= urls.length) break;
-            const url = urls[urlIndex++];
-            next[idx] = { ...next[idx], [colKey]: url, [`_url_${colKey}`]: url };
-          }
-          if (urlIndex < urls.length) {
-            const remaining = urls.slice(urlIndex);
-            remaining.forEach((url) => {
+          setRows((prevRows) => {
+            const emptyIndices: number[] = [];
+            prevRows.forEach((row, i) => {
+              const val = String(row[colKey] ?? "").trim();
+              if (!val) emptyIndices.push(i);
+            });
+            const next = [...prevRows];
+            if (emptyIndices.length > 0) {
+              const idx = emptyIndices[0];
+              next[idx] = { ...next[idx], [colKey]: url, [`_url_${colKey}`]: url };
+            } else {
               const newRow = createEmptyRow(project.inputSchema, project.outputSchema);
               newRow[colKey] = url;
               (newRow as Record<string, unknown>)[`_url_${colKey}`] = url;
               next.push(newRow);
-            });
-          }
-          return next;
-        });
+            }
+            return next;
+          });
+        }
 
-        toast.success(`成功导入 ${urls.length} 个文件`);
+        toast.dismiss("batch-upload");
+        toast.success(`成功导入 ${total} 个文件`);
       } catch (err) {
+        console.error("Batch upload error", err);
         toast.dismiss("batch-upload");
         toast.error(err instanceof Error ? err.message : "批量上传失败");
       } finally {
