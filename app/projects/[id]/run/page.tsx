@@ -25,6 +25,8 @@ import { buttonVariants } from "@/components/ui/button";
 type InputSchemaItem = { key: string; label: string; type: string };
 type OutputSchemaItem = { key: string; path: string; label: string; type: string };
 
+const RUNNER_CACHE_DEBOUNCE_MS = 1000;
+
 export default function ProjectRunPage() {
   const params = useParams();
   const router = useRouter();
@@ -123,11 +125,46 @@ export default function ProjectRunPage() {
           const t = localStorage.getItem("coze_api_token");
           if (t) setCozeToken(t);
         } else if (data.apiToken) setCozeToken(data.apiToken);
+
+        if (typeof window === "undefined") {
+          setRows([createEmptyRow(data.inputSchema, data.outputSchema)]);
+          return;
+        }
+        const storageKey = `coze_runner_cache_${id}`;
+        try {
+          const raw = localStorage.getItem(storageKey);
+          if (raw) {
+            const parsed = JSON.parse(raw) as { rows?: RunnerRow[]; lastRunAt?: number };
+            if (parsed?.rows && Array.isArray(parsed.rows) && parsed.rows.length > 0) {
+              setRows(parsed.rows);
+              toast.success("已恢复上次未保存的进度");
+              return;
+            }
+          }
+        } catch {
+          // corrupted or invalid cache, fallback to default
+        }
         setRows([createEmptyRow(data.inputSchema, data.outputSchema)]);
       })
       .catch(() => toast.error("加载项目失败"))
       .finally(() => setLoading(false));
   }, [id]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !id) return;
+    const storageKey = `coze_runner_cache_${id}`;
+    const t = setTimeout(() => {
+      try {
+        localStorage.setItem(
+          storageKey,
+          JSON.stringify({ rows, lastRunAt: Date.now() })
+        );
+      } catch {
+        // quota or other storage error
+      }
+    }, RUNNER_CACHE_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [rows, id]);
 
   const addRow = () => {
     if (!project) return;
@@ -316,6 +353,18 @@ export default function ProjectRunPage() {
     setClearDialogOpen(false);
     toast.success("表格已清空");
   };
+
+  const handleClearCache = useCallback(() => {
+    if (typeof window === "undefined") return;
+    const storageKey = `coze_runner_cache_${id}`;
+    localStorage.removeItem(storageKey);
+    if (project) {
+      setRows([createEmptyRow(project.inputSchema, project.outputSchema)]);
+    } else {
+      setRows([]);
+    }
+    toast.success("已重置");
+  }, [id, project]);
 
   const handlePaste = useCallback(
     (e: React.ClipboardEvent) => {
@@ -670,6 +719,17 @@ export default function ProjectRunPage() {
         <div className="mt-4 flex items-center gap-2">
           <Button variant="outline" onClick={addRow} disabled={isRunning}>
             添加一行
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-zinc-500 hover:text-zinc-700"
+            onClick={handleClearCache}
+            disabled={isRunning}
+            title="清除本地缓存并重置表格"
+            aria-label="清除缓存"
+          >
+            清除缓存
           </Button>
           {rows.length > 0 && (
             <>
