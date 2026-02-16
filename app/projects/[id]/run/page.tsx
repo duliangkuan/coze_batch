@@ -196,28 +196,40 @@ export default function ProjectRunPage() {
       }
       const total = urls.length;
       setBatchDownloadProgress({ colKey, current: 0, total });
-      toast.info(`开始批量下载 ${total} 个文件，请允许浏览器下载多个文件...`, {
-        id: "batch-download-start",
-      });
-      for (let i = 0; i < urls.length; i++) {
-        const url = urls[i];
-        const filename = getDownloadFilename(url, i);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = filename;
-        a.rel = "noopener noreferrer";
-        a.style.display = "none";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setBatchDownloadProgress((prev) =>
-          prev?.colKey === colKey ? { ...prev, current: i + 1 } : prev
-        );
-        if (i < urls.length - 1) await new Promise((r) => setTimeout(r, 800));
+
+      try {
+        for (let index = 0; index < urls.length; index++) {
+          const url = urls[index];
+          const filename = getDownloadFilename(url, index);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = filename;
+          link.rel = "noopener noreferrer";
+          link.style.display = "none";
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+
+          setBatchDownloadProgress((prev) =>
+            prev?.colKey === colKey ? { ...prev, current: index + 1 } : prev
+          );
+          toast.loading(`正在下载第 ${index + 1}/${total} 个文件...`, {
+            id: "batch-download",
+          });
+
+          if (index < urls.length - 1) {
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+          }
+        }
+        toast.dismiss("batch-download");
+        toast.success("所有文件下载完成");
+      } catch (err) {
+        console.error("Batch download error", err);
+        toast.dismiss("batch-download");
+        toast.error("部分下载失败");
+      } finally {
+        setBatchDownloadProgress(null);
       }
-      setBatchDownloadProgress(null);
-      toast.dismiss("batch-download-start");
-      toast.success("所有文件下载完成");
     },
     [isFileLikeUrl, getDownloadFilename]
   );
