@@ -257,7 +257,7 @@ export default function ProjectRunPage() {
           const file = files[i];
           const blob = await upload(file.name, file, {
             access: "public",
-            handleUploadUrl: "/api/upload/client",
+            handleUploadUrl: "/api/upload",
           });
           urls.push(blob.url);
         }

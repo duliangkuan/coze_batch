@@ -1,22 +1,83 @@
-import { NextRequest, NextResponse } from "next/server";
-import { put } from "@vercel/blob";
+import { NextResponse } from "next/server";
+import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { getAuthFromCookie } from "@/lib/auth";
 
-export async function POST(req: NextRequest) {
+const MAX_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
+
+/** Allow all common types: Images, Videos, PDFs, Docs (client-side upload, no 4.5MB limit) */
+const ALLOWED_CONTENT_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "image/svg+xml",
+  "image/bmp",
+  "image/x-icon",
+  "video/mp4",
+  "video/quicktime",
+  "video/webm",
+  "video/ogg",
+  "video/x-msvideo",
+  "audio/mpeg",
+  "audio/wav",
+  "audio/webm",
+  "audio/ogg",
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "text/plain",
+  "text/csv",
+  "text/markdown",
+  "text/html",
+  "application/octet-stream",
+];
+
+export async function POST(request: Request): Promise<NextResponse> {
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    console.error("BLOB_READ_WRITE_TOKEN is not set");
+    return NextResponse.json(
+      { error: "Server upload is not configured (missing BLOB_READ_WRITE_TOKEN)" },
+      { status: 503 }
+    );
+  }
+
   const auth = await getAuthFromCookie();
-  if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  let body: HandleUploadBody;
+  try {
+    body = (await request.json()) as HandleUploadBody;
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
 
   try {
-    const formData = await req.formData();
-    const file = formData.get("file") as File | null;
-    if (!file || !(file instanceof File)) {
-      return NextResponse.json({ error: "缺少 file 字段或非文件" }, { status: 400 });
-    }
+    const jsonResponse = await handleUpload({
+      body,
+      request,
+      onBeforeGenerateToken: async (_pathname, _clientPayload) => {
+        return {
+          allowedContentTypes: ALLOWED_CONTENT_TYPES,
+          maximumSizeInBytes: MAX_SIZE_BYTES,
+          addRandomSuffix: true,
+          tokenPayload: JSON.stringify({ userId: auth.userId ?? auth.role }),
+        };
+      },
+      onUploadCompleted: async ({ blob }) => {
+        console.log("Blob uploaded", blob.url);
+      },
+    });
 
-    const blob = await put(file.name, file, { access: "public" });
-    return NextResponse.json({ url: blob.url });
-  } catch (err) {
-    console.error("Upload error", err);
-    return NextResponse.json({ error: "上传失败" }, { status: 500 });
+    return NextResponse.json(jsonResponse);
+  } catch (error) {
+    console.error("Upload handleUpload error", error);
+    return NextResponse.json(
+      { error: (error as Error).message || "Upload failed" },
+      { status: 400 }
+    );
   }
 }

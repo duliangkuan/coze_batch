@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import { upload } from "@vercel/blob/client";
 import { Upload, Loader2, X, FileText, FileType2, File, FileSpreadsheet } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -137,17 +138,12 @@ export function FileUploadCell({ value, url, onUpload, disabled, className }: Fi
 
     setLoading(true);
     setError(null);
-    const formData = new FormData();
-    formData.append("file", file);
-
     try {
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
+      const blob = await upload(file.name, file, {
+        access: "public",
+        handleUploadUrl: "/api/upload",
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "上传失败");
-      const fileUrl = data.url;
+      const fileUrl = blob.url;
       if (!fileUrl) throw new Error("未返回文件地址");
       onUpload(fileUrl, fileUrl);
     } catch (err) {
